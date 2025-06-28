@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Text Assistant</title>
+    <style>
+        body {
+            width: 350px;
+            min-height: 400px;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f8f9fa;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .header h1 {
+            margin: 0 0 8px 0;
+            font-size: 20px;
+            font-weight: 600;
+        }
+
+        .header p {
+            margin: 0;
+            font-size: 14px;
+            opacity: 0.9;
+        }
+
+        .content {
+            padding: 20px;
+        }
+
+        .section {
+            background: white;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 16px;
+            border: 1px solid #e9ecef;
+        }
+
+        .section h3 {
+            margin: 0 0 12px 0;
+            font-size: 16px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .section p {
+            margin: 0 0 12px 0;
+            font-size: 14px;
+            color: #666;
+            line-height: 1.4;
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 4px;
+            font-size: 14px;
+            font-weight: 500;
+            color: #333;
+        }
+
+        select, input[type="text"], input[type="password"] {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            font-family: inherit;
+            box-sizing: border-box;
+        }
+
+        select:focus, input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
+        }
+
+        .btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 10px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            font-family: inherit;
+            width: 100%;
+            transition: background 0.2s;
+        }
+
+        .btn:hover {
+            background: #5a6fd8;
+        }
+
+        .btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+
+        .status {
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 14px;
+            margin-top: 8px;
+        }
+
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .instructions {
+            background: #e7f3ff;
+            border: 1px solid #b3d9ff;
+            border-radius: 4px;
+            padding: 12px;
+            margin-bottom: 16px;
+        }
+
+        .instructions h4 {
+            margin: 0 0 8px 0;
+            font-size: 14px;
+            font-weight: 600;
+            color: #0056b3;
+        }
+
+        .instructions ol {
+            margin: 0;
+            padding-left: 16px;
+            font-size: 13px;
+            color: #0056b3;
+        }
+
+        .instructions li {
+            margin-bottom: 4px;
+        }
+
+        .usage-stats {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 12px;
+            color: #666;
+            margin-top: 12px;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .api-key-input {
+            position: relative;
+        }
+
+        .toggle-visibility {
+            position: absolute;
+            right: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+            color: #666;
+            padding: 4px;
+        }
+
+        .toggle-visibility:hover {
+            color: #333;
+        }
+
+        .footer {
+            text-align: center;
+            padding: 16px;
+            border-top: 1px solid #e9ecef;
+            background: white;
+            font-size: 12px;
+            color: #666;
+        }
+
+        .footer a {
+            color: #667eea;
+            text-decoration: none;
+        }
+
+        .footer a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🤖 AI Text Assistant</h1>
+        <p>Right-click selected text to get AI insights</p>
+    </div>
+
+    <div class="content">
+        <div class="instructions">
+            <h4>How to use:</h4>
+            <ol>
+                <li>Select any text on a webpage</li>
+                <li>Right-click and choose "Ask AI"</li>
+                <li>Type your question about the selected text</li>
+                <li>Get instant AI responses!</li>
+            </ol>
+        </div>
+
+        <div class="section">
+            <h3>⚙️ Settings</h3>
+            
+            <div class="form-group">
+                <label for="apiProvider">AI Provider:</label>
+                <select id="apiProvider">
+                    <option value="openai">OpenAI (GPT-3.5/GPT-4)</option>
+                    <option value="anthropic">Anthropic (Claude)</option>
+                    <option value="mistralai">MistralAI</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="apiKey">API Key:</label>
+                <div class="api-key-input">
+                    <input type="password" id="apiKey" placeholder="Enter your API key">
+                    <button type="button" class="toggle-visibility" id="toggleApiKey">👁️</button>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="maxTokens">Max Response Length:</label>
+                <select id="maxTokens">
+                    <option value="250">Short (250 tokens)</option>
+                    <option value="500" selected>Medium (500 tokens)</option>
+                    <option value="1000">Long (1000 tokens)</option>
+                    <option value="2000">Very Long (2000 tokens)</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="temperature">Response Creativity:</label>
+                <select id="temperature">
+                    <option value="0.3">Focused & Precise</option>
+                    <option value="0.7" selected>Balanced</option>
+                    <option value="1.0">Creative & Varied</option>
+                </select>
+            </div>
+
+            <button class="btn" id="saveSettings">Save Settings</button>
+            <div id="settingsStatus"></div>
+        </div>
+
+        <div class="section">
+            <h3>📊 Usage Statistics</h3>
+            <p>Queries today: <span id="dailyCount">0</span></p>
+            <p>Total queries: <span id="totalCount">0</span></p>
+            <div class="usage-stats">
+                <span>Last used: <span id="lastUsed">Never</span></span>
+                <button class="btn btn-secondary" id="clearStats" style="width: auto; padding: 4px 8px; font-size: 12px;">Clear Stats</button>
+            </div>
+        </div>
+
+        <div class="section">
+            <h3>🔗 Quick Actions</h3>
+            <button class="btn btn-secondary" id="testConnection" style="margin-bottom: 8px;">Test API Connection</button>
+            <button class="btn btn-secondary" id="viewHistory">View Chat History</button>
+            <div id="testStatus"></div>
+        </div>
+    </div>
+
+    <div class="footer">
+        <p>Need help? <a href="#" id="helpLink">View Documentation</a></p>
+        <p>Made with ❤️ for better web browsing</p>
+    </div>
+
+    <script src="popup.js"></script>
+</body>
+</html>
