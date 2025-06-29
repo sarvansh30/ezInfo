@@ -159,29 +159,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Open help documentation
-    function openHelp() {
-        chrome.tabs.create({
-            url: 'https://github.com/your-username/ai-text-assistant#readme'
-        });
-    }
-
-    // Show status message
-    function showStatus(message, type, element = settingsStatus) {
-        element.innerHTML = `<div class="status ${type}">${message}</div>`;
-        if (type === 'success') {
-            setTimeout(() => {
-                element.innerHTML = '';
-            }, 3000);
-        }
-    }
-
-    // Update stats when extension is used
-    chrome.storage.onChanged.addListener((changes, namespace) => {
-        if (namespace === 'local' && (changes.dailyCount || changes.totalCount || changes.lastUsed)) {
-            loadStats();
-        }
-    });
 
     // Keyboard shortcuts
     document.addEventListener('keydown', (e) => {
