@@ -37,7 +37,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 async function handleAICall(request, sendResponse) {
   try {
     console.log('Calling AI API...');
-    const response = await callAIAPI(request.prompt, request.selectedText);
+    const response = await callAIAPI(request.prompt, request.selectedText, request.conversationContext);
     console.log('AI API response received');
     
     // Send success response
@@ -59,8 +59,8 @@ async function handleAICall(request, sendResponse) {
   }
 }
 
-// AI API call function
-async function callAIAPI(userPrompt, selectedText) {
+// AI API call function with conversation context support
+async function callAIAPI(userPrompt, selectedText, conversationContext = []) {
   try {
     // Get API key from storage
     const result = await chrome.storage.sync.get(['apiKey', 'apiProvider']);
@@ -71,18 +71,15 @@ async function callAIAPI(userPrompt, selectedText) {
       throw new Error('Please set your API key in extension options');
     }
 
-    const fullPrompt = selectedText 
-      ? `${userPrompt}\n\nSelected text: "${selectedText}"`
-      : userPrompt;
-
     console.log(`Calling ${provider} API...`);
+    console.log('Conversation context length:', conversationContext.length);
 
     if (provider === 'openai') {
-      return await callOpenAI(apiKey, fullPrompt);
+      return await callOpenAI(apiKey, userPrompt, selectedText, conversationContext);
     } else if (provider === 'anthropic') {
-      return await callAnthropic(apiKey, fullPrompt);
+      return await callAnthropic(apiKey, userPrompt, selectedText, conversationContext);
     } else if (provider === 'mistralai') {
-      return await callMistralAI(apiKey, fullPrompt);
+      return await callMistralAI(apiKey, userPrompt, selectedText, conversationContext);
     } else {
       throw new Error(`Unknown API provider: ${provider}`);
     }
@@ -92,8 +89,21 @@ async function callAIAPI(userPrompt, selectedText) {
   }
 }
 
-async function callOpenAI(apiKey, prompt) {
+async function callOpenAI(apiKey, userPrompt, selectedText, conversationContext = []) {
   try {
+    // Build messages array with conversation context
+    const messages = [];
+    
+    // Add conversation context
+    messages.push(...conversationContext);
+    
+    // Add current message
+    const currentMessage = selectedText 
+      ? `${userPrompt}\n\nSelected text: "${selectedText}"`
+      : userPrompt;
+    
+    messages.push({ role: 'user', content: currentMessage });
+
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -102,16 +112,17 @@ async function callOpenAI(apiKey, prompt) {
       },
       body: JSON.stringify({
         model: 'gpt-3.5-turbo',
-        messages: [{ role: 'user', content: prompt }],
-        max_tokens: 500,
+        messages: messages,
+        max_tokens: 1000,
         temperature: 0.7
       })
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error('OpenAI API error:', response.status, errorText);
-      throw new Error(`OpenAI API error (${response.status}): ${response.statusText}`);
+      const errorData = await response.json().catch(() => null);
+      const errorMessage = errorData?.error?.message || response.statusText;
+      console.error('OpenAI API error:', response.status, errorMessage);
+      throw new Error(`OpenAI API error (${response.status}): ${errorMessage}`);
     }
 
     const data = await response.json();
@@ -123,12 +134,28 @@ async function callOpenAI(apiKey, prompt) {
     return data.choices[0].message.content;
   } catch (error) {
     console.error('OpenAI API call failed:', error);
+    if (error.message.includes('API key')) {
+      throw new Error('Invalid API key. Please check your OpenAI API key in extension settings.');
+    }
     throw new Error(`OpenAI API call failed: ${error.message}`);
   }
 }
 
-async function callAnthropic(apiKey, prompt) {
+async function callAnthropic(apiKey, userPrompt, selectedText, conversationContext = []) {
   try {
+    // Build messages array with conversation context
+    const messages = [];
+    
+    // Add conversation context (Anthropic expects alternating user/assistant messages)
+    messages.push(...conversationContext);
+    
+    // Add current message
+    const currentMessage = selectedText 
+      ? `${userPrompt}\n\nSelected text: "${selectedText}"`
+      : userPrompt;
+    
+    messages.push({ role: 'user', content: currentMessage });
+
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -138,15 +165,16 @@ async function callAnthropic(apiKey, prompt) {
       },
       body: JSON.stringify({
         model: 'claude-3-sonnet-20240229',
-        max_tokens: 500,
-        messages: [{ role: 'user', content: prompt }]
+        max_tokens: 1000,
+        messages: messages
       })
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Anthropic API error:', response.status, errorText);
-      throw new Error(`Anthropic API error (${response.status}): ${response.statusText}`);
+      const errorData = await response.json().catch(() => null);
+      const errorMessage = errorData?.error?.message || response.statusText;
+      console.error('Anthropic API error:', response.status, errorMessage);
+      throw new Error(`Anthropic API error (${response.status}): ${errorMessage}`);
     }
 
     const data = await response.json();
@@ -158,13 +186,29 @@ async function callAnthropic(apiKey, prompt) {
     return data.content[0].text;
   } catch (error) {
     console.error('Anthropic API call failed:', error);
+    if (error.message.includes('API key') || error.message.includes('authentication')) {
+      throw new Error('Invalid API key. Please check your Anthropic API key in extension settings.');
+    }
     throw new Error(`Anthropic API call failed: ${error.message}`);
   }
 }
 
-// Add MistralAI API call
-async function callMistralAI(apiKey, prompt) {
+// Add MistralAI API call with conversation context
+async function callMistralAI(apiKey, userPrompt, selectedText, conversationContext = []) {
   try {
+    // Build messages array with conversation context
+    const messages = [];
+    
+    // Add conversation context
+    messages.push(...conversationContext);
+    
+    // Add current message
+    const currentMessage = selectedText 
+      ? `${userPrompt}\n\nSelected text: "${selectedText}"`
+      : userPrompt;
+    
+    messages.push({ role: 'user', content: currentMessage });
+
     const response = await fetch('https://api.mistral.ai/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -173,16 +217,17 @@ async function callMistralAI(apiKey, prompt) {
       },
       body: JSON.stringify({
         model: 'mistral-medium',
-        messages: [{ role: 'user', content: prompt }],
-        max_tokens: 500,
+        messages: messages,
+        max_tokens: 1000,
         temperature: 0.7
       })
     });
     
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error('MistralAI API error:', response.status, errorText);
-      throw new Error(`MistralAI API error (${response.status}): ${response.statusText}`);
+      const errorData = await response.json().catch(() => null);
+      const errorMessage = errorData?.error?.message || response.statusText;
+      console.error('MistralAI API error:', response.status, errorMessage);
+      throw new Error(`MistralAI API error (${response.status}): ${errorMessage}`);
     }
     
     const data = await response.json();
@@ -194,6 +239,9 @@ async function callMistralAI(apiKey, prompt) {
     return data.choices[0].message.content;
   } catch (error) {
     console.error('MistralAI API call failed:', error);
+    if (error.message.includes('API key') || error.message.includes('authentication')) {
+      throw new Error('Invalid API key. Please check your MistralAI API key in extension settings.');
+    }
     throw new Error(`MistralAI API call failed: ${error.message}`);
   }
 }

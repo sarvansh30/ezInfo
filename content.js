@@ -1,214 +1,239 @@
-// Content script - handles UI creation and interaction
+// Content script - compact horizontal UI
 let currentTooltip = null;
 let currentChatWindow = null;
 let conversationHistory = [];
+let conversationContext = [];
+let mouseX = 0;
+let mouseY = 0;
+
+// Track mouse position for tooltip placement
+document.addEventListener('mousemove', (e) => {
+  mouseX = e.clientX;
+  mouseY = e.clientY;
+});
 
 // Listen for messages from background script
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "showAIPrompt") {
-    showPromptTooltip(request.selectedText, request.x, request.y);
+    // We assume the CSS is injected via manifest.json, so no style injection needed here.
+    showPromptTooltip(request.selectedText, mouseX, mouseY);
   }
 });
 
 // Simple markdown to HTML converter
 function parseMarkdown(text) {
   if (!text) return '';
-  
+  // Basic markdown parsing
   return text
-    // Escape HTML first to prevent XSS
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    // Headers (do this before other formatting)
     .replace(/^### (.*$)/gim, '<h3>$1</h3>')
     .replace(/^## (.*$)/gim, '<h2>$1</h2>')
     .replace(/^# (.*$)/gim, '<h1>$1</h1>')
-    // Bold
     .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
     .replace(/__(.*?)__/g, '<strong>$1</strong>')
-    // Italic
     .replace(/\*(.*?)\*/g, '<em>$1</em>')
     .replace(/_(.*?)_/g, '<em>$1</em>')
-    // Code blocks (before inline code)
-    .replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
-    // Inline code
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    // Lists
+    .replace(/```([\s\S]*?)```/g, (_match, p1) => `<pre><code>${escapeHtml(p1)}</code></pre>`)
+    .replace(/`([^`]+)`/g, (_match, p1) => `<code>${escapeHtml(p1)}</code>`)
     .replace(/^\* (.*$)/gim, '<li>$1</li>')
     .replace(/^\- (.*$)/gim, '<li>$1</li>')
     .replace(/^\+ (.*$)/gim, '<li>$1</li>')
-    // Line breaks (convert double newlines to paragraphs, single to br)
     .replace(/\n\n/g, '</p><p>')
     .replace(/\n/g, '<br>');
 }
 
-// Wrap list items in ul tags and paragraphs in p tags
 function wrapLists(html) {
-  // Wrap consecutive list items in ul tags
-  html = html.replace(/(<li>.*?<\/li>)(\s*<br>\s*<li>.*?<\/li>)*/g, function(match) {
+  // Wrap list items in <ul>
+  html = html.replace(/(<li>.*?<\/li>)(\s*<br>\s*<li>.*?<\/li>)*/g, (match) => {
     return '<ul>' + match.replace(/<br>/g, '') + '</ul>';
   });
-  
-  // Wrap content in paragraphs if it doesn't start with a block element
-  if (html && !html.match(/^<(h[1-6]|ul|ol|pre|div)/)) {
+  // Wrap non-tagged text in <p>
+  if (html && !html.match(/^<(h[1-6]|ul|ol|pre|div|p)/)) {
     html = '<p>' + html + '</p>';
   }
-  
   return html;
 }
 
-// Create and show the prompt tooltip
+// Create compact horizontal tooltip
 function showPromptTooltip(selectedText, x, y) {
-  // Remove existing tooltip
-  removeTooltip();
-  
-  // Get mouse position if coordinates not provided
-  if (!x || !y) {
+  removeTooltip(); // Ensure no other tooltips are open
+
+  let tooltipX = x || mouseX;
+  let tooltipY = y || mouseY;
+
+  // Fallback positioning if mouse coordinates are not available
+  if (!tooltipX || !tooltipY) {
     const selection = window.getSelection();
     if (selection.rangeCount > 0) {
       const range = selection.getRangeAt(0);
       const rect = range.getBoundingClientRect();
-      x = rect.right;
-      y = rect.top;
+      tooltipX = rect.right + window.scrollX;
+      tooltipY = rect.top + window.scrollY;
+    } else {
+      tooltipX = window.innerWidth / 2;
+      tooltipY = window.innerHeight / 2;
     }
   }
 
-  // Create tooltip
   const tooltip = document.createElement('div');
   tooltip.id = 'ai-assistant-tooltip';
   tooltip.innerHTML = `
-    <div class="tooltip-header">
-      <span>Ask AI about selected text</span>
-      <button class="close-btn">&times;</button>
+    <div class="compact-container">
+      <input type="text" id="ai-prompt-input" placeholder="Ask about: '${selectedText.substring(0, 30)}${selectedText.length > 30 ? '...' : ''}'" />
+      <button id="send-prompt-btn" title="Send">Send</button>
+      <button id="clear-prompt-btn" title="Clear">Clear</button>
+      <button id="close-tooltip-btn" title="Close">Close</button>
     </div>
-    <div class="tooltip-content">
-      <textarea placeholder="What would you like to know about: '${selectedText.substring(0, 50)}${selectedText.length > 50 ? '...' : ''}'?" 
-                id="ai-prompt-input" rows="3"></textarea>
-      <div class="tooltip-buttons">
-        <button id="send-prompt-btn">Ask AI</button>
-        <button id="cancel-prompt-btn">Cancel</button>
-      </div>
-    </div>
-    <div id="ai-response" class="ai-response" style="display: none;">
+    <div id="ai-response" class="response-container" style="display: none;">
       <div class="response-content"></div>
-      <div class="response-actions">
-        <button id="read-more-btn">Read More</button>
-        <button id="continue-chat-btn">Continue Chat</button>
+      <div class="response-buttons">
+        <button id="read-more-btn" title="Read More">📖</button>
+        <button id="continue-chat-btn" title="Continue Chat">💬</button>
       </div>
     </div>
     <div class="loading" id="loading" style="display: none;">
       <div class="spinner"></div>
-      <span>Thinking...</span>
+      <span>Loading...</span>
     </div>
   `;
-  
-  // Position tooltip
-  tooltip.style.left = Math.min(x, window.innerWidth - 320) + 'px';
-  tooltip.style.top = Math.max(y - 10, 10) + 'px';
-  
   document.body.appendChild(tooltip);
   currentTooltip = tooltip;
-  
-  // Add event listeners
+
+  // Position tooltip dynamically
+  const tooltipRect = tooltip.getBoundingClientRect();
+  const tooltipWidth = tooltipRect.width;
+  const tooltipHeight = tooltipRect.height;
+  const finalX = Math.min(Math.max(tooltipX + 10, 10), window.innerWidth - tooltipWidth - 10);
+  const finalY = Math.min(Math.max(tooltipY - 10, 10), window.innerHeight - tooltipHeight - 10);
+
+  tooltip.style.left = `${finalX}px`;
+  tooltip.style.top = `${finalY}px`;
+
+  // Make draggable and set up events
+  makeDraggable(tooltip);
   setupTooltipEvents(selectedText);
-  
-  // Focus on input
-  document.getElementById('ai-prompt-input').focus();
+
+  // Auto-focus the input
+  setTimeout(() => {
+    const input = document.getElementById('ai-prompt-input');
+    if (input) input.focus();
+  }, 100);
 }
+
 
 function setupTooltipEvents(selectedText) {
   const tooltip = currentTooltip;
+  if (!tooltip) return;
+
   const promptInput = tooltip.querySelector('#ai-prompt-input');
   const sendBtn = tooltip.querySelector('#send-prompt-btn');
-  const cancelBtn = tooltip.querySelector('#cancel-prompt-btn');
-  const closeBtn = tooltip.querySelector('.close-btn');
+  const clearBtn = tooltip.querySelector('#clear-prompt-btn');
+  const closeBtn = tooltip.querySelector('#close-tooltip-btn');
   const readMoreBtn = tooltip.querySelector('#read-more-btn');
   const continueBtn = tooltip.querySelector('#continue-chat-btn');
-  
-  // Close events
-  closeBtn.addEventListener('click', removeTooltip);
-  cancelBtn.addEventListener('click', removeTooltip);
-  
-  // Send prompt
-  sendBtn.addEventListener('click', () => sendPrompt(selectedText));
-  promptInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      sendPrompt(selectedText);
-    }
+
+  if (closeBtn) closeBtn.addEventListener('click', removeTooltip);
+  if (clearBtn) clearBtn.addEventListener('click', () => {
+    if (promptInput) promptInput.value = '';
+    promptInput.focus();
   });
-  
-  // Response actions
-  readMoreBtn.addEventListener('click', () => showFullResponse());
-  continueBtn.addEventListener('click', () => openChatWindow(selectedText));
-  
-  // Click outside to close
-  document.addEventListener('click', handleOutsideClick);
+
+  if (sendBtn) sendBtn.addEventListener('click', () => sendPrompt(selectedText));
+  if (promptInput) {
+    promptInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        sendPrompt(selectedText);
+      }
+    });
+  }
+
+  if (readMoreBtn) readMoreBtn.addEventListener('click', () => showFullResponse());
+  if (continueBtn) continueBtn.addEventListener('click', () => openChatWindow(selectedText));
+
+  // Add a listener to close the tooltip when clicking outside
+  setTimeout(() => {
+    document.addEventListener('click', handleOutsideClick);
+  }, 100);
 }
 
 function handleOutsideClick(e) {
-  if (currentTooltip && !currentTooltip.contains(e.target)) {
+  // Close if the click is outside the tooltip and any generated chat window or modal
+  if (currentTooltip && !currentTooltip.contains(e.target) &&
+      (!currentChatWindow || !currentChatWindow.contains(e.target)) &&
+      !e.target.closest('#ai-response-modal')) {
     removeTooltip();
   }
 }
 
 async function sendPrompt(selectedText) {
   const promptInput = document.getElementById('ai-prompt-input');
-  const userPrompt = promptInput.value.trim();
-  
-  if (!userPrompt) return;
-  
-  // Show loading
-  showLoading(true);
-  
-  try {
-    // Call AI API through background script with proper error handling
-    const response = await new Promise((resolve, reject) => {
-      // Check if chrome.runtime is available
-      if (!chrome.runtime) {
-        reject(new Error('Extension context invalidated. Please reload the page.'));
-        return;
-      }
+  if (!promptInput) return;
 
-      const messageId = Date.now(); // Add unique ID for debugging
+  let userPrompt = promptInput.value.trim();
+
+  // If no prompt, use a default action
+  if (!userPrompt) {
+    userPrompt = "Explain this with examples and meaning";
+  }
+
+  showLoading(true);
+
+  try {
+    const contextMessages = conversationContext.slice();
+    const currentMessage = selectedText
+      ? `About "${selectedText}": ${userPrompt}`
+      : userPrompt;
+
+    const response = await new Promise((resolve, reject) => {
+      if (!chrome.runtime || !chrome.runtime.sendMessage) {
+        return reject(new Error('Extension context invalidated. Please reload the page.'));
+      }
       
+      const timeoutId = setTimeout(() => reject(new Error('Request timeout - please try again')), 30000);
+
       chrome.runtime.sendMessage({
         action: 'callAI',
         prompt: userPrompt,
         selectedText: selectedText,
-        messageId: messageId
+        conversationContext: contextMessages
       }, (response) => {
-        // Check for chrome.runtime.lastError
+        clearTimeout(timeoutId);
         if (chrome.runtime.lastError) {
-          console.error('Chrome runtime error:', chrome.runtime.lastError);
-          reject(new Error(`Connection error: ${chrome.runtime.lastError.message}`));
-          return;
+          return reject(new Error(`Connection error: ${chrome.runtime.lastError.message}`));
         }
-        
         if (!response) {
-          reject(new Error('No response received from background script'));
-          return;
+          return reject(new Error('No response received from background script.'));
         }
-        
         if (response.success) {
           resolve(response.response);
         } else {
-          reject(new Error(response.error || 'Unknown error occurred'));
+          reject(new Error(response.error || 'An unknown error occurred.'));
         }
       });
     });
+
+    // Update conversation context for follow-up questions
+    conversationContext.push({ role: 'user', content: currentMessage });
+    conversationContext.push({ role: 'assistant', content: response });
+
+    // Keep context history from growing too large
+    if (conversationContext.length > 20) {
+      conversationContext = conversationContext.slice(-20);
+    }
     
-    // Store in conversation history
+    // Keep a separate, more detailed history if needed
     conversationHistory.push({
       userPrompt: userPrompt,
       selectedText: selectedText,
       aiResponse: response,
       timestamp: new Date()
     });
-    
-    // Show response
+
     showResponse(response);
-    
+
   } catch (error) {
     console.error('Error in sendPrompt:', error);
     showError(error.message);
@@ -219,60 +244,51 @@ async function sendPrompt(selectedText) {
 
 function showResponse(response) {
   const responseDiv = document.getElementById('ai-response');
+  if (!responseDiv) return;
+
   const contentDiv = responseDiv.querySelector('.response-content');
-  
-  // Calculate truncation based on plain text length
-  const plainText = response.replace(/[#*`_\-+]/g, ''); // Remove markdown chars for length calc
-  const maxLength = 200;
+  if (!contentDiv) return;
+
+  const plainText = response.replace(/[#*`_\-+]/g, '');
+  const maxLength = 150;
   const truncated = plainText.length > maxLength;
   
-  let displayText;
+  let displayText = response;
   if (truncated) {
-    // Find a good truncation point (try to break at sentence end)
-    let truncateAt = maxLength;
-    const sentences = response.split(/[.!?]\s+/);
-    let currentLength = 0;
-    let safeText = '';
-    
-    for (const sentence of sentences) {
-      if (currentLength + sentence.length > maxLength) break;
-      safeText += sentence + '. ';
-      currentLength = safeText.replace(/[#*`_\-+]/g, '').length;
-    }
-    
-    displayText = safeText || response.substring(0, maxLength);
-    if (!displayText.endsWith('...')) {
-      displayText += '...';
-    }
-  } else {
-    displayText = response;
+    // Attempt to truncate at a word boundary
+    let truncatedText = response.substring(0, maxLength);
+    truncatedText = truncatedText.substring(0, Math.min(truncatedText.length, truncatedText.lastIndexOf(' ')));
+    displayText = truncatedText + '...';
   }
-  
-  // Convert markdown to HTML and set as innerHTML
+
   const formattedText = wrapLists(parseMarkdown(displayText));
   contentDiv.innerHTML = formattedText;
   responseDiv.style.display = 'block';
-  
-  // Show/hide read more button
+
   const readMoreBtn = document.getElementById('read-more-btn');
-  readMoreBtn.style.display = truncated ? 'inline-block' : 'none';
-  
-  // Store full response
+  if (readMoreBtn) {
+    readMoreBtn.style.display = truncated ? 'inline-block' : 'none';
+  }
+
+  // Store the full response on the element for later use
   responseDiv.dataset.fullResponse = response;
 }
 
+
 function showFullResponse() {
   const responseDiv = document.getElementById('ai-response');
+  if (!responseDiv) return;
+
   const fullResponse = responseDiv.dataset.fullResponse;
-  
-  // Create modal for full response
+  if (!fullResponse) return;
+
   const modal = document.createElement('div');
   modal.id = 'ai-response-modal';
   modal.innerHTML = `
     <div class="modal-content">
       <div class="modal-header">
         <h3>AI Response</h3>
-        <button class="close-btn">&times;</button>
+        <button class="close-btn" title="Close">&times;</button>
       </div>
       <div class="modal-body">
         <div class="response-text">${wrapLists(parseMarkdown(fullResponse))}</div>
@@ -283,18 +299,19 @@ function showFullResponse() {
       </div>
     </div>
   `;
-  
+
   document.body.appendChild(modal);
-  
-  // Add event listeners
-  modal.querySelector('.close-btn').addEventListener('click', () => {
-    document.body.removeChild(modal);
-  });
-  modal.querySelector('#close-modal').addEventListener('click', () => {
-    document.body.removeChild(modal);
-  });
+
+  const closeModal = () => {
+    if (document.body.contains(modal)) {
+      document.body.removeChild(modal);
+    }
+  };
+
+  modal.querySelector('.close-btn').addEventListener('click', closeModal);
+  modal.querySelector('#close-modal').addEventListener('click', closeModal);
   modal.querySelector('#continue-from-modal').addEventListener('click', () => {
-    document.body.removeChild(modal);
+    closeModal();
     openChatWindow();
   });
 }
@@ -305,72 +322,78 @@ function openChatWindow(selectedText) {
     return;
   }
   
-  // Create chat window
+  removeTooltip(); // Close the initial tooltip when opening chat
+
   const chatWindow = document.createElement('div');
   chatWindow.id = 'ai-chat-window';
   chatWindow.innerHTML = `
     <div class="chat-header">
-      <span>AI Chat</span>
+      <span>AI Assistant</span>
       <div class="chat-controls">
-        <button id="minimize-chat">_</button>
-        <button id="close-chat">&times;</button>
+        <button id="clear-chat-btn" title="Clear Chat">Clear</button>
+        <button id="minimize-chat" title="Minimize">_</button>
+        <button id="close-chat" title="Close">&times;</button>
       </div>
     </div>
     <div class="chat-messages" id="chat-messages"></div>
     <div class="chat-input-area">
-      <textarea id="chat-input" placeholder="Ask a follow-up question..." rows="2"></textarea>
-      <button id="send-chat">Send</button>
+      <textarea id="chat-input" placeholder="Ask a follow-up question..." rows="1"></textarea>
+      <button id="send-chat" title="Send">Send</button>
     </div>
   `;
-  
+
+  // Default position
+  chatWindow.style.top = '100px';
+  chatWindow.style.right = '20px';
+
   document.body.appendChild(chatWindow);
   currentChatWindow = chatWindow;
-  
-  // Load conversation history
+
   loadChatHistory();
-  
-  // Setup chat events
   setupChatEvents();
-  
-  // Remove tooltip
-  removeTooltip();
 }
 
 function loadChatHistory() {
   const messagesDiv = document.getElementById('chat-messages');
+  if (!messagesDiv) return;
+
+  messagesDiv.innerHTML = ''; // Clear previous messages
   
-  conversationHistory.forEach(item => {
-    // Add user message
-    addChatMessage(`About "${item.selectedText}": ${item.userPrompt}`, 'user');
-    // Add AI response
-    addChatMessage(item.aiResponse, 'ai');
+  // Use the context for chat history for better flow
+  conversationContext.forEach(item => {
+    addChatMessage(item.content, item.role);
   });
   
-  // Scroll to bottom
+  if (messagesDiv.innerHTML.trim() === '') {
+      addChatMessage("Hello! How can I help you today?", 'system');
+  }
+  
   messagesDiv.scrollTop = messagesDiv.scrollHeight;
 }
 
-function addChatMessage(content, sender) {
+function addChatMessage(content, sender) { // sender is 'user', 'assistant', 'error', or 'system'
   const messagesDiv = document.getElementById('chat-messages');
+  if (!messagesDiv) return;
+
   const messageDiv = document.createElement('div');
-  messageDiv.className = `chat-message ${sender}`;
+  messageDiv.classList.add('chat-message', sender);
   
-  // Format content based on sender
   let formattedContent;
-  if (sender === 'ai') {
+  if (sender === 'assistant') {
     formattedContent = wrapLists(parseMarkdown(content));
-  } else if (sender === 'error') {
-    formattedContent = `<span class="error">${content}</span>`;
   } else {
-    formattedContent = content.replace(/</g, '&lt;').replace(/>/g, '&gt;'); // Escape user content
+    formattedContent = escapeHtml(content);
   }
-  
-  messageDiv.innerHTML = `
-    <div class="message-content">${formattedContent}</div>
-    <div class="message-time">${new Date().toLocaleTimeString()}</div>
-  `;
+
+  messageDiv.innerHTML = formattedContent;
   messagesDiv.appendChild(messageDiv);
   messagesDiv.scrollTop = messagesDiv.scrollHeight;
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
 }
 
 function setupChatEvents() {
@@ -378,93 +401,126 @@ function setupChatEvents() {
   const sendBtn = document.getElementById('send-chat');
   const closeBtn = document.getElementById('close-chat');
   const minimizeBtn = document.getElementById('minimize-chat');
+  const clearChatBtn = document.getElementById('clear-chat-btn');
+
+  if (sendBtn) sendBtn.addEventListener('click', sendChatMessage);
+  if (chatInput) {
+    chatInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendChatMessage();
+      }
+    });
+    // Auto-resize textarea
+    chatInput.addEventListener('input', () => {
+        chatInput.style.height = 'auto';
+        chatInput.style.height = (chatInput.scrollHeight) + 'px';
+    });
+  }
+
+  if (closeBtn) closeBtn.addEventListener('click', closeChatWindow);
+  if (minimizeBtn) minimizeBtn.addEventListener('click', minimizeChatWindow);
+  if (clearChatBtn) clearChatBtn.addEventListener('click', clearChat);
   
-  sendBtn.addEventListener('click', sendChatMessage);
-  chatInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      sendChatMessage();
-    }
-  });
-  
-  closeBtn.addEventListener('click', closeChatWindow);
-  minimizeBtn.addEventListener('click', minimizeChatWindow);
-  
-  // Make draggable
-  makeDraggable(currentChatWindow);
+  if (currentChatWindow) {
+    makeDraggable(currentChatWindow);
+  }
 }
+
+function clearChat() {
+    conversationContext = [];
+    conversationHistory = []; // Also clear the detailed history if maintained
+    const messagesDiv = document.getElementById('chat-messages');
+    if (messagesDiv) {
+        messagesDiv.innerHTML = '';
+        addChatMessage('Chat cleared.', 'system');
+    }
+}
+
 
 async function sendChatMessage() {
   const chatInput = document.getElementById('chat-input');
+  if (!chatInput) return;
+
   const message = chatInput.value.trim();
-  
   if (!message) return;
-  
-  // Add user message
+
+  // Clear "Chat cleared" or initial message if it exists
+  const systemMessage = document.querySelector('.chat-message.system');
+  if (systemMessage) {
+      systemMessage.remove();
+  }
+
   addChatMessage(message, 'user');
   chatInput.value = '';
+  chatInput.style.height = 'auto'; // Reset height
+
+  // Add message to context before sending
+  conversationContext.push({ role: 'user', content: message });
   
   // Show typing indicator
   const typingDiv = document.createElement('div');
-  typingDiv.className = 'chat-message ai typing';
-  typingDiv.innerHTML = '<div class="message-content">AI is typing...</div>';
-  document.getElementById('chat-messages').appendChild(typingDiv);
-  
+  typingDiv.className = 'chat-message assistant typing';
+  typingDiv.innerHTML = '<span></span><span></span><span></span>';
+  const messagesDiv = document.getElementById('chat-messages');
+  if (messagesDiv) {
+    messagesDiv.appendChild(typingDiv);
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+  }
+
   try {
-    // Call AI API with improved error handling
     const response = await new Promise((resolve, reject) => {
-      if (!chrome.runtime) {
-        reject(new Error('Extension context invalidated. Please reload the page.'));
-        return;
+      if (!chrome.runtime || !chrome.runtime.sendMessage) {
+        return reject(new Error('Extension context invalidated. Please reload the page.'));
       }
+      
+      const timeoutId = setTimeout(() => reject(new Error('Request timeout - please try again')), 30000);
 
       chrome.runtime.sendMessage({
         action: 'callAI',
         prompt: message,
-        selectedText: '' // Follow-up question
+        selectedText: '',
+        conversationContext: conversationContext.slice() // Send a copy
       }, (response) => {
+        clearTimeout(timeoutId);
         if (chrome.runtime.lastError) {
-          console.error('Chrome runtime error:', chrome.runtime.lastError);
-          reject(new Error(`Connection error: ${chrome.runtime.lastError.message}`));
-          return;
+          return reject(new Error(`Connection error: ${chrome.runtime.lastError.message}`));
         }
-        
         if (!response) {
-          reject(new Error('No response received from background script'));
-          return;
+          return reject(new Error('No response received from background script.'));
         }
-        
         if (response.success) {
           resolve(response.response);
         } else {
-          reject(new Error(response.error || 'Unknown error occurred'));
+          reject(new Error(response.error || 'An unknown error occurred.'));
         }
       });
     });
+
+    if (typingDiv && typingDiv.parentNode) {
+      typingDiv.remove();
+    }
     
-    // Remove typing indicator
-    typingDiv.remove();
+    // Add AI response to context and display it
+    conversationContext.push({ role: 'assistant', content: response });
+    addChatMessage(response, 'assistant');
     
-    // Add AI response
-    addChatMessage(response, 'ai');
-    
-    // Store in history
-    conversationHistory.push({
-      userPrompt: message,
-      selectedText: '',
-      aiResponse: response,
-      timestamp: new Date()
-    });
-    
+    // Trim context history
+    if (conversationContext.length > 20) {
+      conversationContext = conversationContext.slice(-20);
+    }
+
   } catch (error) {
     console.error('Error in sendChatMessage:', error);
-    typingDiv.remove();
+    if (typingDiv && typingDiv.parentNode) {
+      typingDiv.remove();
+    }
     addChatMessage(`Error: ${error.message}`, 'error');
   }
 }
 
 function closeChatWindow() {
-  if (currentChatWindow) {
+  if (currentChatWindow && document.body.contains(currentChatWindow)) {
     document.body.removeChild(currentChatWindow);
     currentChatWindow = null;
   }
@@ -477,31 +533,37 @@ function minimizeChatWindow() {
 }
 
 function makeDraggable(element) {
-  const header = element.querySelector('.chat-header');
+  const header = element.querySelector('.chat-header') || element;
+  if (!header) return;
+
   let isDragging = false;
   let startX, startY, initialX, initialY;
-  
+
   header.addEventListener('mousedown', (e) => {
+    // Prevent dragging when clicking on form elements or buttons inside the header
+    if (e.target.closest('button, input, textarea, select')) {
+        return;
+    }
+    
     isDragging = true;
     startX = e.clientX;
     startY = e.clientY;
     initialX = element.offsetLeft;
     initialY = element.offsetTop;
-    
+
     document.addEventListener('mousemove', drag);
     document.addEventListener('mouseup', stopDrag);
+    e.preventDefault();
   });
-  
+
   function drag(e) {
     if (!isDragging) return;
-    
     const dx = e.clientX - startX;
     const dy = e.clientY - startY;
-    
-    element.style.left = (initialX + dx) + 'px';
-    element.style.top = (initialY + dy) + 'px';
+    element.style.left = `${initialX + dx}px`;
+    element.style.top = `${initialY + dy}px`;
   }
-  
+
   function stopDrag() {
     isDragging = false;
     document.removeEventListener('mousemove', drag);
@@ -509,32 +571,38 @@ function makeDraggable(element) {
   }
 }
 
+
 function showLoading(show) {
-  const loading = document.getElementById('loading');
+  const loadingDiv = document.getElementById('loading');
   const sendBtn = document.getElementById('send-prompt-btn');
-  
-  if (show) {
-    loading.style.display = 'flex';
-    sendBtn.disabled = true;
-  } else {
-    loading.style.display = 'none';
-    sendBtn.disabled = false;
+
+  if (loadingDiv) {
+    loadingDiv.style.display = show ? 'flex' : 'none';
+  }
+  if (sendBtn) {
+    sendBtn.disabled = show;
   }
 }
 
 function showError(message) {
   const responseDiv = document.getElementById('ai-response');
+  if (!responseDiv) return;
+
   const contentDiv = responseDiv.querySelector('.response-content');
-  
-  contentDiv.innerHTML = `<span class="error">Error: ${message}</span>`;
+  if (!contentDiv) return;
+
+  contentDiv.innerHTML = `<span class="error-message">Error: ${escapeHtml(message)}</span>`;
   responseDiv.style.display = 'block';
-  
-  // Hide action buttons for errors
-  responseDiv.querySelector('.response-actions').style.display = 'none';
+
+  // Hide response action buttons on error
+  const buttonsDiv = responseDiv.querySelector('.response-buttons');
+  if (buttonsDiv) {
+    buttonsDiv.style.display = 'none';
+  }
 }
 
 function removeTooltip() {
-  if (currentTooltip) {
+  if (currentTooltip && document.body.contains(currentTooltip)) {
     document.body.removeChild(currentTooltip);
     currentTooltip = null;
     document.removeEventListener('click', handleOutsideClick);
