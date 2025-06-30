@@ -7,68 +7,66 @@
     <link rel="stylesheet" href="popup.css">
 </head>
 <body>
-    <div class="container">
-    <div class="header">
-        <h1>ezInfo</h1>
-        <p>Right-click selected text to get AI insights</p>
-    </div>
+    <div class="wrapper">
+        <div class="header">
+            <h1>ezInfo</h1>
+            <p>To ask your quick questions.</p>
+        </div>
 
+        <div class="content">
 
-        <div class="section">
-            <h3>⚙️ Settings</h3>
-            
-            <div class="form-group">
-                <label for="apiProvider">AI Provider:</label>
-                <select id="apiProvider">
-                    <option value="openai">OpenAI (GPT-3.5/GPT-4)</option>
-                    <option value="anthropic">Anthropic (Claude)</option>
-                    <option value="mistralai">MistralAI</option>
-                </select>
+            <div class="instructions">
+                <ol>
+                    <li>Select Text</li>
+                    <li>Right-Click</li>
+                    <li>Get Answer</li>
+                </ol>
             </div>
 
-            <div class="form-group">
-                <label for="apiKey">API Key:</label>
-                <div class="api-key-input">
-                    <input type="password" id="apiKey" placeholder="Enter your API key">
-                    <button type="button" class="toggle-visibility" id="toggleApiKey">👁️</button>
+            <div class="section">
+                <h3>⚙️ SETTINGS</h3>
+                
+                <div class="form-group">
+                    <label for="apiProvider">AI Provider</label>
+                    <select id="apiProvider">
+                        <option value="mistralai" selected>MistralAI</option>
+                        <option value="openai">OpenAI (GPT-3.5/GPT-4)</option>
+                        <option value="anthropic">Anthropic (Claude)</option>
+                    </select>
                 </div>
+
+                <div class="form-group">
+                    <label for="apiKey">API Key</label>
+                    <div class="input-with-button">
+                        <input type="password" id="apiKey" placeholder="Enter your API key">
+                        <button type="button" class="toggle-visibility" id="toggleApiKey" title="Toggle Visibility">👁️</button>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="maxTokens">Max Response Length</label>
+                    <select id="maxTokens">
+                        <option value="250">Short</option>
+                        <option value="500" selected>Medium</option>
+                        <option value="1000">Long</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="temperature">Response Creativity</label>
+                    <select id="temperature">
+                        <option value="0.3">Precise</option>
+                        <option value="0.7" selected>Balanced</option>
+                        <option value="1.0">Creative</option>
+                    </select>
+                </div>
+
+                <button class="btn" id="saveSettings">Save Settings</button>
+                <div id="settingsStatus" class="status-message"></div>
             </div>
 
-            <div class="form-group">
-                <label for="maxTokens">Max Response Length:</label>
-                <select id="maxTokens">
-                    <option value="250">Short (250 tokens)</option>
-                    <option value="500" selected>Medium (500 tokens)</option>
-                    <option value="1000">Long (1000 tokens)</option>
-                    <option value="2000">Very Long (2000 tokens)</option>
-                </select>
-            </div>
-
-            <div class="form-group">
-                <label for="temperature">Response Creativity:</label>
-                <select id="temperature">
-                    <option value="0.3">Focused & Precise</option>
-                    <option value="0.7" selected>Balanced</option>
-                    <option value="1.0">Creative & Varied</option>
-                </select>
-            </div>
-
-            <button class="btn" id="saveSettings">Save Settings</button>
-            <div id="settingsStatus"></div>
         </div>
-
-       
-    <div class="content">
-        <div class="instructions">
-            <h4>How to use:</h4>
-            <ol>
-                <li>Select any text on a webpage</li>
-                <li>Right-click and choose "Ask AI"</li>
-                <li>Type your question about the selected text</li>
-                <li>Get instant AI responses!</li>
-            </ol>
-        </div>
-</div>
+    </div>
     <script src="popup.js"></script>
 </body>
 </html>
