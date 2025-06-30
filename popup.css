@@ -2,8 +2,13 @@
 :root {
   --background-dark: #1e2124;
   --surface-dark: #282b30;
-  --primary-orange: #ff9900;
+  --primary-orange: #ff9900; /* Keeping orange variables in case they are used elsewhere or for fallback */
   --primary-orange-hover: #e68a00;
+
+  /* New Blue Color Variables to match the icon */
+  --primary-blue: #00bfff; /* A bright, vibrant blue */
+  --primary-blue-hover: #009acd; /* A slightly darker blue for hover state */
+
   --text-light: #f0f0f0;
   --text-secondary: #a0a0a0;
   --border-color: #3a3e44;
@@ -19,7 +24,7 @@ html, body {
   margin: 0;
   padding: 0;
   width: 380px;
-  max-height: 600px; 
+  max-height: 600px;
   font-family: var(--font-family);
   background-color: var(--background-dark);
   color: var(--text-light);
@@ -31,7 +36,7 @@ html, body {
 
 /* --- Header --- */
 .header {
-  padding: 14px 20px; /* TWEAK: Reduced vertical padding */
+  padding: 14px 20px;
   text-align: center;
   border-bottom: 1px solid var(--border-color);
 }
@@ -40,15 +45,15 @@ html, body {
   margin: 0;
   font-size: 22px;
   font-weight: 700;
-  color: var(--primary-orange);
+  color: var(--primary-blue); /* Changed to blue */
   text-shadow: 0px 1px 3px rgba(0, 0, 0, 0.3);
 }
 
-.header p { display: none; /* Hiding subtitle to save space, h1 is clear enough */ }
+.header p { display: none; }
 
 /* --- Content & Sections --- */
 .content {
-  padding: 12px; /* TWEAK: Reduced padding */
+  padding: 12px;
 }
 
 .section {
@@ -71,7 +76,7 @@ html, body {
 
 /* --- NEW: Horizontal Instructions --- */
 .instructions {
-  margin-bottom: 12px; /* Space between instructions and settings */
+  margin-bottom: 12px;
 }
 
 .instructions ol {
@@ -81,7 +86,7 @@ html, body {
   list-style: none;
   padding: 0;
   margin: 0;
-  counter-reset: steps; /* Initialize a counter */
+  counter-reset: steps;
 }
 
 .instructions li {
@@ -89,8 +94,8 @@ html, body {
   font-size: 12px;
   font-weight: 500;
   text-align: center;
-  position: relative; /* For positioning the separator line */
-  width: 30%; /* Give each item some space */
+  position: relative;
+  width: 30%;
 }
 
 /* Create the step number circle */
@@ -103,8 +108,8 @@ html, body {
   height: 24px;
   line-height: 24px;
   border-radius: 50%;
-  background-color: var(--border-color);
-  color: var(--text-light);
+  background-color: var(--primary-blue); /* Changed to blue */
+  color: var(--background-dark); /* Text color inside the blue circle */
   font-weight: 600;
 }
 
@@ -112,23 +117,23 @@ html, body {
 .instructions li:not(:last-child)::after {
   content: '';
   position: absolute;
-  top: 12px; /* Vertically center the line */
-  left: 70%; /* Start the line after the circle */
-  width: 60%; /* Make the line span to the next element */
+  top: 12px;
+  left: 70%;
+  width: 60%;
   height: 2px;
   background: repeating-linear-gradient(90deg, var(--border-color), var(--border-color) 4px, transparent 4px, transparent 8px);
 }
 
 
 /* --- Form Elements --- */
-.form-group { margin-bottom: 8px; } /* TWEAK: Tighter spacing */
+.form-group { margin-bottom: 8px; }
 label { margin-bottom: 5px; font-size: 13px; }
 
 select,
 input[type="password"],
-input[type="text"] { /* This selector fixes the style-loss bug */
+input[type="text"] {
   width: 100%;
-  padding: 9px 12px; /* TWEAK: Reduced vertical padding */
+  padding: 9px 12px;
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius-small);
   font-size: 14px;
@@ -148,8 +153,8 @@ select {
 select:focus,
 input:focus {
   outline: none;
-  border-color: var(--primary-orange);
-  box-shadow: 0 0 0 3px rgba(255, 153, 0, 0.3);
+  border-color: var(--primary-blue); /* Changed to blue */
+  box-shadow: 0 0 0 3px rgba(0, 191, 255, 0.3); /* Changed to blue */
 }
 
 .input-with-button { position: relative; }
@@ -167,14 +172,26 @@ input[type="text"] { padding-right: 45px; }
 
 /* --- Buttons & Status --- */
 .btn {
-  background-color: var(--primary-orange); color: #111; border: none;
-  padding: 10px 20px; border-radius: var(--border-radius-small);
-  cursor: pointer; font-size: 15px; font-weight: 600; width: 100%;
-  transition: all 0.2s ease-in-out; margin-top: 4px;
+  background-color: var(--primary-blue); /* Changed to blue */
+  color: var(--background-dark); /* Ensures good contrast with blue */
+  border: none;
+  padding: 10px 20px;
+  border-radius: var(--border-radius-small);
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 600;
+  width: 100%;
+  transition: all 0.2s ease-in-out;
+  margin-top: 4px;
 }
-.btn:hover { background-color: var(--primary-orange-hover); transform: translateY(-1px); }
+.btn:hover {
+    background-color: var(--primary-blue-hover); /* Changed to blue hover */
+    transform: translateY(-1px);
+}
 
 .status-message {
-  text-align: center; font-size: 13px;
-  padding-top: 6px; min-height: 20px;
+  text-align: center;
+  font-size: 13px;
+  padding-top: 6px;
+  min-height: 20px;
 }

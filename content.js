@@ -5,6 +5,7 @@ let conversationHistory = [];
 let conversationContext = [];
 let mouseX = 0;
 let mouseY = 0;
+let selectionIcon = null; // NEW: Variable for the selection icon
 
 // Track mouse position for tooltip placement
 document.addEventListener('mousemove', (e) => {
@@ -12,12 +13,127 @@ document.addEventListener('mousemove', (e) => {
   mouseY = e.clientY;
 });
 
-// Listen for messages from background script
+// Listen for messages from background script (for context menu)
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "showAIPrompt") {
+    // This is triggered by the context menu. We should also remove the selection icon if it exists.
+    removeSelectionIcon();
     showPromptTooltip(request.selectedText, mouseX, mouseY);
   }
 });
+
+// NEW: Listen for text selection to show the icon
+document.addEventListener('mouseup', (e) => {
+    // Use a short timeout to allow the browser to register the selection
+    setTimeout(() => {
+        const selection = window.getSelection();
+        if (!selection) return;
+
+        const selectedText = selection.toString().trim();
+
+        // Don't show icon if interacting with our own UI elements or if the target is the icon itself
+        if (e.target.closest('#ai-assistant-tooltip, #ai-chat-window, #ai-selection-icon')) {
+            return;
+        }
+
+        // Only show for selections of a reasonable length
+        if (selectedText.length > 1) {
+            // If the selection is inside a textarea or input, don't show the icon.
+            const activeEl = document.activeElement;
+            const isEditable = activeEl && (activeEl.tagName.toLowerCase() === 'textarea' || activeEl.isContentEditable || (activeEl.tagName.toLowerCase() === 'input' && /text|search|password|email|url/.test(activeEl.type)));
+            if (isEditable) {
+                 removeSelectionIcon();
+                 return;
+            }
+
+            // Use pageX/Y to position relative to the document, not viewport, to handle scrolling
+            showSelectionIcon(e.pageX, e.pageY, selectedText);
+        } else {
+            removeSelectionIcon();
+        }
+    }, 10);
+});
+
+
+// MODIFIED: Function to show the selection icon, now using a PNG
+function showSelectionIcon(x, y, selectedText) {
+    removeSelectionIcon(); // Remove any old icon
+
+    selectionIcon = document.createElement('div');
+    selectionIcon.id = 'ai-selection-icon';
+    selectionIcon.style.position = 'absolute';
+    // Position it top-left of the cursor
+    selectionIcon.style.left = `${x - 32}px`;
+    selectionIcon.style.top = `${y - 32}px`;
+    selectionIcon.style.width = '28px';
+    selectionIcon.style.height = '28px';
+    selectionIcon.style.borderRadius = '50%';
+    
+    // MODIFICATION: Use the correct icon path from your manifest.json.
+    try {
+        const iconUrl = chrome.runtime.getURL('icons/icon-16.png');
+        selectionIcon.style.backgroundImage = `url('${iconUrl}')`;
+        selectionIcon.style.backgroundSize = 'cover';
+        selectionIcon.style.backgroundPosition = 'center';
+        selectionIcon.style.backgroundRepeat = 'no-repeat';
+    } catch (error) {
+        // Fallback to a visible style if the icon fails to load (e.g., not in manifest)
+        console.error("Ask AI Extension: Could not load custom icon. Check manifest.json's web_accessible_resources.", error);
+        selectionIcon.style.backgroundColor = 'white';
+        selectionIcon.style.border = '1px solid #ccc';
+        selectionIcon.style.display = 'flex';
+        selectionIcon.style.alignItems = 'center';
+        selectionIcon.style.justifyContent = 'center';
+        selectionIcon.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5f6368" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>`;
+    }
+
+    selectionIcon.style.boxShadow = '0 2px 5px rgba(0,0,0,0.2)';
+    selectionIcon.style.cursor = 'pointer';
+    selectionIcon.style.zIndex = '2147483647'; // Max z-index
+    selectionIcon.style.transition = 'transform 0.1s ease-out, box-shadow 0.1s ease-out';
+    selectionIcon.title = 'Ask AI';
+
+    document.body.appendChild(selectionIcon);
+
+    // Add a little hover effect for better UX
+    selectionIcon.addEventListener('mouseenter', () => {
+        selectionIcon.style.transform = 'scale(1.1)';
+        selectionIcon.style.boxShadow = '0 4px 8px rgba(0,0,0,0.25)';
+    });
+    selectionIcon.addEventListener('mouseleave', () => {
+        selectionIcon.style.transform = 'scale(1)';
+        selectionIcon.style.boxShadow = '0 2px 5px rgba(0,0,0,0.2)';
+    });
+
+    // Prevent mousedown on icon from deselecting text
+    selectionIcon.addEventListener('mousedown', (e) => {
+        e.preventDefault(); // This is the key fix to keep text selected
+        e.stopPropagation();
+    });
+
+    // On click, trigger the main UI
+    selectionIcon.addEventListener('click', (e) => {
+        e.stopPropagation();
+        // **FIX**: Use the 'selectedText' variable passed into this function.
+        // This is more reliable than re-getting the selection, which might have been cleared by the click.
+        if (selectedText) {
+            // Get position from the icon itself to place the tooltip nearby
+            const rect = selectionIcon.getBoundingClientRect();
+            // Position the tooltip below the icon
+            showPromptTooltip(selectedText, rect.left + window.scrollX, rect.bottom + 5 + window.scrollY);
+        }
+        removeSelectionIcon();
+    });
+}
+
+// NEW: Function to remove the selection icon
+function removeSelectionIcon() {
+    if (selectionIcon && selectionIcon.parentNode) {
+        selectionIcon.parentNode.removeChild(selectionIcon);
+        selectionIcon = null;
+    }
+}
+
 
 // Simple markdown to HTML converter
 function parseMarkdown(text) {
@@ -55,9 +171,10 @@ function wrapLists(html) {
   return html;
 }
 
-// Create compact horizontal tooltip
+// MODIFIED: showPromptTooltip now also removes the icon
 function showPromptTooltip(selectedText, x, y) {
   removeTooltip(); // Ensure no other tooltips are open
+  removeSelectionIcon(); // NEW: Remove the icon when the tooltip appears
 
   let tooltipX = x || mouseX;
   let tooltipY = y || mouseY;
@@ -155,9 +272,11 @@ function setupTooltipEvents(selectedText) {
   }, 100);
 }
 
+// MODIFIED: handleOutsideClick needs to be aware of the new icon
 function handleOutsideClick(e) {
   if (currentTooltip && !currentTooltip.contains(e.target) &&
-      (!currentChatWindow || !currentChatWindow.contains(e.target))) {
+      (!currentChatWindow || !currentChatWindow.contains(e.target)) &&
+      !e.target.closest('#ai-selection-icon')) { // NEW Check to prevent closing when icon is clicked
     removeTooltip();
   }
 }
@@ -557,10 +676,12 @@ function showError(message) {
   }
 }
 
+// MODIFIED: removeTooltip should also remove the icon for good measure
 function removeTooltip() {
   if (currentTooltip && document.body.contains(currentTooltip)) {
     document.body.removeChild(currentTooltip);
     currentTooltip = null;
     document.removeEventListener('click', handleOutsideClick);
   }
+  removeSelectionIcon(); // NEW: Cleanup icon as well
 }
