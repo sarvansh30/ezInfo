@@ -133,6 +133,7 @@
 }
 
 .response-content {
+  color: var(--text-light);
   margin-bottom: 10px;
   line-height: 1.5;
   max-height: 60px; /* Truncated height */

@@ -200,7 +200,7 @@ function showPromptTooltip(selectedText, x, y) {
       <input type="text" id="ai-prompt-input" placeholder="Ask about: '${selectedText.substring(0, 30)}${selectedText.length > 30 ? '...' : ''}'" />
       <button id="send-prompt-btn" title="Send">Send</button>
       <button id="clear-prompt-btn" title="Clear">Clear</button>
-      <button id="close-tooltip-btn" title="Close">Close</button>
+      <button id="close-tooltip-btn" title="Close">✖</button>
     </div>
     <div id="ai-response" class="response-container" style="display: none;">
       <div class="response-content"></div>
@@ -264,7 +264,8 @@ function setupTooltipEvents(selectedText) {
     });
   }
 
-  if (readMoreBtn) readMoreBtn.addEventListener('click', () => showFullResponse());
+  // MODIFIED: This now points to the new getDetailedExplanation function
+  if (readMoreBtn) readMoreBtn.addEventListener('click', () => getDetailedExplanation());
   if (continueBtn) continueBtn.addEventListener('click', () => openChatWindow(selectedText));
 
   setTimeout(() => {
@@ -281,33 +282,40 @@ function handleOutsideClick(e) {
   }
 }
 
+// UPDATED: This function now requests a summary first.
 async function sendPrompt(selectedText) {
   const promptInput = document.getElementById('ai-prompt-input');
   if (!promptInput) return;
 
   let userPrompt = promptInput.value.trim();
   if (!userPrompt) {
-    userPrompt = "Explain this with examples and meaning";
+    // A better default prompt for a summary request.
+    userPrompt = "Summarize meaning/explanation of this in one line";
   }
 
   showLoading(true);
 
   try {
     const contextMessages = conversationContext.slice();
+    // The message that will be stored in history
     const currentMessage = selectedText 
       ? `About "${selectedText}": ${userPrompt}`
       : userPrompt;
+    
+    // NEW: Create a specific prompt to ask the AI for a summary.
+    const summaryPrompt = `Generate a concise, one-line summary for the following request about '${selectedText}': ${userPrompt}`;
 
-    const response = await new Promise((resolve, reject) => {
+    const summaryResponse = await new Promise((resolve, reject) => {
       if (!chrome.runtime || !chrome.runtime.sendMessage) {
         return reject(new Error('Extension context invalidated. Please reload the page.'));
       }
       
       const timeoutId = setTimeout(() => reject(new Error('Request timeout - please try again')), 30000);
 
+      // The action now sends the specific summary prompt.
       chrome.runtime.sendMessage({
         action: 'callAI',
-        prompt: userPrompt,
+        prompt: summaryPrompt, // Using the new summary-specific prompt
         selectedText: selectedText,
         conversationContext: contextMessages
       }, (response) => {
@@ -326,8 +334,10 @@ async function sendPrompt(selectedText) {
       });
     });
 
+    // Add user's original request and the AI's summary to the context.
+    // The summary will be replaced later with the full explanation.
     conversationContext.push({ role: 'user', content: currentMessage });
-    conversationContext.push({ role: 'assistant', content: response });
+    conversationContext.push({ role: 'assistant', content: summaryResponse });
 
     if (conversationContext.length > 20) {
       conversationContext = conversationContext.slice(-20);
@@ -336,11 +346,12 @@ async function sendPrompt(selectedText) {
     conversationHistory.push({
       userPrompt: userPrompt,
       selectedText: selectedText,
-      aiResponse: response,
+      aiResponse: summaryResponse, // Initially, the history stores the summary
       timestamp: new Date()
     });
 
-    showResponse(response);
+    // Pass the original prompt and selected text to showResponse
+    showResponse(summaryResponse, userPrompt, selectedText);
 
   } catch (error) {
     console.error('Error in sendPrompt:', error);
@@ -350,55 +361,99 @@ async function sendPrompt(selectedText) {
   }
 }
 
-function showResponse(response) {
+// UPDATED: Displays the summary and always shows "Read More".
+// It now stores the original prompt data for the getDetailedExplanation function.
+function showResponse(summaryResponse, originalUserPrompt, originalSelectedText) {
   const responseDiv = document.getElementById('ai-response');
   if (!responseDiv) return;
 
   const contentDiv = responseDiv.querySelector('.response-content');
   if (!contentDiv) return;
 
-  const plainText = response.replace(/[#*`_\-+]/g, '');
-  const maxLength = 150;
-  const truncated = plainText.length > maxLength;
-  
-  let displayText = response;
-  if (truncated) {
-    let truncatedText = response.substring(0, maxLength);
-    truncatedText = truncatedText.substring(0, Math.min(truncatedText.length, truncatedText.lastIndexOf(' ')));
-    displayText = truncatedText + '...';
-  }
-
-  const formattedText = wrapLists(parseMarkdown(displayText));
+  // Display the summary provided by the AI. No need to truncate.
+  const formattedText = wrapLists(parseMarkdown(summaryResponse));
   contentDiv.innerHTML = formattedText;
   responseDiv.style.display = 'block';
 
+  // NEW: Always show the "Read More" button after the initial summary.
   const readMoreBtn = document.getElementById('read-more-btn');
   if (readMoreBtn) {
-    readMoreBtn.style.display = truncated ? 'inline-block' : 'none';
+    readMoreBtn.style.display = 'inline-block';
   }
 
-  responseDiv.dataset.fullResponse = response;
+  // Store the original prompt and selection so "Read More" knows what to ask for.
+  responseDiv.dataset.originalPrompt = originalUserPrompt;
+  responseDiv.dataset.originalSelection = originalSelectedText;
 }
 
-function showFullResponse() {
+
+// REPLACED: `showFullResponse` is now `getDetailedExplanation`.
+// This function is now async and makes a second, new API call.
+async function getDetailedExplanation() {
   const tooltip = currentTooltip;
   const responseDiv = document.getElementById('ai-response');
   if (!tooltip || !responseDiv) return;
 
-  const fullResponse = responseDiv.dataset.fullResponse;
-  if (!fullResponse) return;
+  // Retrieve the original prompt information from the dataset.
+  const originalPrompt = responseDiv.dataset.originalPrompt;
+  const originalSelection = responseDiv.dataset.originalSelection;
+  if (!originalPrompt) return; // originalSelection can be empty
 
   const contentDiv = responseDiv.querySelector('.response-content');
-  if (!contentDiv) return;
-  
-  // Expand the tooltip and show full content
-  tooltip.classList.add('is-expanded');
-  contentDiv.innerHTML = wrapLists(parseMarkdown(fullResponse));
-
-  // Hide the "Read More" button after expanding
   const readMoreBtn = document.getElementById('read-more-btn');
-  if (readMoreBtn) {
-    readMoreBtn.style.display = 'none';
+
+  // Show a loading state inside the response box and hide the button.
+  if (contentDiv) contentDiv.innerHTML = '<span>Loading full explanation...</span>';
+  if (readMoreBtn) readMoreBtn.style.display = 'none';
+  showLoading(true); // Disable the main send button too.
+
+  try {
+    // NEW: Create a new prompt for the detailed explanation.
+    const detailedPrompt = `Now, provide a whole explanation and example for the following request about '${originalSelection}': ${originalPrompt}`;
+
+    const detailedResponse = await new Promise((resolve, reject) => {
+      // We use a sliced context that only includes the user's initial message
+      // to avoid the AI getting confused by its own summary.
+      const freshContext = conversationContext.slice(0, -1);
+      
+      const timeoutId = setTimeout(() => reject(new Error('Request timeout - please try again')), 30000);
+
+      chrome.runtime.sendMessage({
+        action: 'callAI',
+        prompt: detailedPrompt,
+        selectedText: originalSelection,
+        conversationContext: freshContext
+      }, (response) => {
+        clearTimeout(timeoutId);
+        if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
+        if (response && response.success) {
+          resolve(response.response);
+        } else {
+          reject(new Error(response.error || 'Failed to get detailed explanation.'));
+        }
+      });
+    });
+
+    // Display the new, full response.
+    if (contentDiv) {
+      contentDiv.innerHTML = wrapLists(parseMarkdown(detailedResponse));
+      tooltip.classList.add('is-expanded');
+    }
+
+    // CRITICAL: Update the last assistant message in the context from the summary
+    // to the new detailed response. This ensures "Continue in Chat" works correctly.
+    if (conversationContext.length > 0) {
+      const lastMessage = conversationContext[conversationContext.length - 1];
+      if (lastMessage.role === 'assistant') {
+        lastMessage.content = detailedResponse;
+      }
+    }
+    
+  } catch (error) {
+    console.error('Error fetching detailed explanation:', error);
+    if (contentDiv) contentDiv.innerHTML = `<span class="error-message">Error: ${escapeHtml(error.message)}</span>`;
+  } finally {
+    showLoading(false); // Re-enable main send button.
   }
 }
 
