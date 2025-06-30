@@ -111,7 +111,7 @@ async function callOpenAI(apiKey, userPrompt, selectedText, conversationContext 
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'gpt-3.5-turbo',
+        model: 'gpt-4o',
         messages: messages,
         max_tokens: 1000,
         temperature: 0.7
