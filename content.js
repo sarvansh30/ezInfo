@@ -71,7 +71,7 @@ function showSelectionIcon(x, y, selectedText) {
     
     // MODIFICATION: Use the correct icon path from your manifest.json.
     try {
-        const iconUrl = chrome.runtime.getURL('icons/icon-16.png');
+        const iconUrl = chrome.runtime.getURL('icons/icon-32.png');
         selectionIcon.style.backgroundImage = `url('${iconUrl}')`;
         selectionIcon.style.backgroundSize = 'cover';
         selectionIcon.style.backgroundPosition = 'center';
@@ -284,6 +284,7 @@ function handleOutsideClick(e) {
 
 // UPDATED: This function now requests a summary first.
 async function sendPrompt(selectedText) {
+  showLoading(false);
   const promptInput = document.getElementById('ai-prompt-input');
   if (!promptInput) return;
 
